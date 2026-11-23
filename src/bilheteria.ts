@@ -1,4 +1,4 @@
-// A venda. Parte B: pagamento recusado devolve as poltronas.
+// A venda. Parte C: tempo limite na operadora (e devolução se o pagamento falhar).
 import {
   DadosInvalidosErro,
   Evento,
@@ -14,6 +14,16 @@ import type {
   EventoInfo,
   Pedido,
 } from "./tipos.ts";
+
+// C: corrida entre a cobrança e um relógio. Quem terminar primeiro decide.
+function comTempoLimite<T>(promessa: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limite = new Promise<never>((_, rejeitar) => {
+    timer = setTimeout(() => rejeitar(new Error("tempo esgotado")), ms);
+  });
+  // O finally desliga o relógio quando a cobrança termina antes.
+  return Promise.race([promessa, limite]).finally(() => clearTimeout(timer));
+}
 
 export class Bilheteria {
   #eventos: Evento[];
@@ -49,9 +59,9 @@ export class Bilheteria {
     const ingressos = montarIngressos(evento.preco, pedido.ingressos, direitoAMeia);
     const total = calcularTotal(ingressos);
 
-    // 4. cobra: o único await da venda
+    // 4. cobra: o único await da venda (recusa e tempo esgotado caem no mesmo catch)
     try {
-      await this.#pagar(total);
+      await comTempoLimite(this.#pagar(total), this.#limitePagamentoMs); // C
     } catch {
       evento.liberar(poltronas); // B: devolve as poltronas que ninguém pagou
       throw new PagamentoErro("a operadora não aprovou o pagamento");
