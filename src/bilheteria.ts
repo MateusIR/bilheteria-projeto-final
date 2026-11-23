@@ -1,7 +1,9 @@
+// A venda. Parte B: pagamento recusado devolve as poltronas.
 import {
   DadosInvalidosErro,
   Evento,
   NaoEncontradoErro,
+  PagamentoErro,
 } from "./dominio.ts";
 import type { Pagamento } from "./pagamento.ts";
 import { calcularTotal, montarIngressos } from "./preco.ts";
@@ -48,7 +50,12 @@ export class Bilheteria {
     const total = calcularTotal(ingressos);
 
     // 4. cobra: o único await da venda
-    await this.#pagar(total);
+    try {
+      await this.#pagar(total);
+    } catch {
+      evento.liberar(poltronas); // B: devolve as poltronas que ninguém pagou
+      throw new PagamentoErro("a operadora não aprovou o pagamento");
+    }
 
     // 5. comprovante, com reservaId novo a cada compra
     this.#ultimaReserva += 1;
